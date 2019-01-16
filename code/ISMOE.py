@@ -24,6 +24,7 @@ from sklearn.cluster import KMeans
 from sklearn.mixture import BayesianGaussianMixture
 from sklearn.model_selection import KFold
 from GPy.util.univariate_Gaussian import std_norm_cdf
+np.random.seed(1)
 
 def _unscaled_dist(X, X2=None):
     if X2 is None:
@@ -240,7 +241,7 @@ class ISMOE(object):
                     if self.mb_weight == 1:
                         self.proposal_prob[j] += gp_model[k].log_likelihood()
                     else:
-                        self.proposal_prob[j] = -1.*min_f.fun
+                        self.proposal_prob[j] += -1.*min_f.fun
 
                 K_star_mask = (self.Z_star[j] == k)
                 assert(K_star_mask.size == self.N_star)
@@ -425,18 +426,21 @@ class ISMOE(object):
             print("%i %i %i %.2f %.2f %.2f %i %i %i " %(self.total_J, self.N_minibatch, self.K, self.avg_score, self.avg_LL, end_time, int(self.partition == "random"), int(self.IS), int(self.mb_weight == 1.)))
 
 if __name__ == '__main__':
-    K= 10
+    K_range= range(10,110,20)
     N= 1000
-    J= 10
+    J= 4
     X_full = np.memmap("gmm_X_mm_full",mode='r',dtype='float32',shape=(12000,100))
     Y_full = np.memmap("gmm_Y_mm_full",mode='r',dtype='float32',shape=(12000,1))
-    kf=KFold(n_splits=2, random_state=0,shuffle=True)
-    for train,test in kf.split(X_full,Y_full):
-        X,Y = X_full[train], Y_full[train]
-        X_star,Y_star = X_full[test], Y_full[test]
-        igps = ISMOE(X = X, Y=Y, X_star= X_star, Y_star = Y_star,K=K, J=J,
-                    IS=True,classification=False,N_minibatch = N,
-                    partition="gmm", stationary=True, mb_upweight=True,
-                    vi_partition=False, full_cov=False)
-        igps.prediction_combine()
-        break
+    
+    print("#ISMOE")
+    for K in K_range:
+        kf=KFold(n_splits=5, random_state=0,shuffle=True)
+        for train,test in kf.split(X_full,Y_full):
+            X,Y = X_full[train], Y_full[train]
+            X_star,Y_star = X_full[test], Y_full[test]
+            igps = ISMOE(X = X, Y=Y, X_star= X_star, Y_star = Y_star,K=K, J=J,
+                        IS=True,classification=False,N_minibatch = N,
+                        partition="gmm", stationary=False, mb_upweight=True,
+                        full_cov=False)
+            igps.prediction_combine()
+
