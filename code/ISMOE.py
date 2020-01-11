@@ -8,10 +8,15 @@ by M. M. Zhang and S. A. Williamson.
 
 @author: Michael Zhang
 """
-
-import time
+# Python 2 to 3 conversion
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from past.builtins import xrange
+from past.builtins import map
 import numpy as np
 import GPy
+import time
 #import pdb
 from mpi4py import MPI
 from scipy import stats
@@ -26,7 +31,6 @@ from sklearn.mixture import BayesianGaussianMixture
 from sklearn.model_selection import KFold
 from GPy.util.univariate_Gaussian import std_norm_cdf
 from GPy.util.linalg import jitchol, dtrtrs
-
 
 def bernoulli_d2logpdf_dlink2(f, y):
     inv_link_f= std_norm_cdf(f)
@@ -59,7 +63,7 @@ def _compute_B_statistics(K, W):
     Ki_W_i = K - C.T.dot(C)
     I_KW_i = np.eye(K.shape[0]) - np.dot(K, K_Wi_i)
     logdet_I_KW = 2*np.sum(np.log(np.diag(L)))
-    return K_Wi_i, logdet_I_KW, I_KW_i, Ki_W_i    
+    return K_Wi_i, logdet_I_KW, I_KW_i, Ki_W_i
 
 def _unscaled_dist(X, X2=None):
     if X2 is None:
@@ -132,7 +136,7 @@ class ISMOE(object):
 #        if self.classification:
 #            self.N_minibatch = self.N
 #        else:
-#            self.N_minibatch = N_minibatch     
+#            self.N_minibatch = N_minibatch
         self.N_minibatch = N_minibatch
 
         assert(self.N_minibatch <= self.N)
@@ -243,7 +247,7 @@ class ISMOE(object):
                         choose_init =  np.random.choice(self.N_minibatch,size=init_n,replace=False)
                         m0 = GPy.core.GP(self.X[self.U[j]][choose_init], self.Y[self.U[j]][choose_init].reshape(-1,1), kernel = GPy.kern.RBF(self.D),
                                 inference_method=GPy.inference.latent_function_inference.laplace.Laplace(),
-                                likelihood=GPy.likelihoods.Bernoulli())                
+                                likelihood=GPy.likelihoods.Bernoulli())
                 init_hyp = np.log(m0.param_array)
                 del m0
             else:
@@ -251,8 +255,8 @@ class ISMOE(object):
             min_f = minimize(self.stationary_objective_fun_class,init_hyp, args=(j,), method='L-BFGS-B')
             hyp = np.exp(min_f.x)
             self.proposal_prob[j] = sum([self.calc_class_marg_LL(hyp,j,k,norm[k]) for k in unique_Z_j])
-            assert(~np.isnan(self.proposal_prob[j]))                
-                
+            assert(~np.isnan(self.proposal_prob[j]))
+
         else:
             if self.N_minibatch > init_n:
                 choose_init =  np.random.choice(self.N_minibatch,size=init_n,replace=False)
@@ -270,7 +274,7 @@ class ISMOE(object):
                 del m0
             else:
                 init_hyp = np.ones(3)
-                
+
             if self.stationary:
                 min_f = minimize(self.stationary_objective_fun_2,init_hyp, args=(j,norm), method='L-BFGS-B')
                 hyp = np.exp(min_f.x)
@@ -284,9 +288,9 @@ class ISMOE(object):
             X_k = np.copy(self.X[self.U[j]][K_mask])
 ############################ start classification ############################################
             if self.classification:
-                gp_model[k] = GPy.core.GP(X_k,Y_k, kernel =  GPy.kern.RBF(self.D, lengthscale=init_hyp[0],variance=init_hyp[1]) ,likelihood=GPy.likelihoods.Bernoulli(),inference_method=GPy.inference.latent_function_inference.laplace.Laplace())                
+                gp_model[k] = GPy.core.GP(X_k,Y_k, kernel =  GPy.kern.RBF(self.D, lengthscale=init_hyp[0],variance=init_hyp[1]) ,likelihood=GPy.likelihoods.Bernoulli(),inference_method=GPy.inference.latent_function_inference.laplace.Laplace())
 ######################################## end classification #############################################
-                        
+
 ######################################## start regression ##################################
             else:
                 if self.stationary:
@@ -376,8 +380,8 @@ class ISMOE(object):
         Ki_f = np.zeros_like(Y)
         f = np.dot(K, Ki_f)
         _mode_finding_tolerance = 1e-4
-        _mode_finding_max_iter = 30    
-    
+        _mode_finding_max_iter = 30
+
         #define the objective function (to be maximised)
         def obj(Ki_f, f):
             ll = -0.5*np.sum(np.dot(Ki_f.T, f)) +   self.mb_weight* np.sum(bernoulli_logpdf(f, Y))
@@ -386,8 +390,8 @@ class ISMOE(object):
                 return -np.inf
             else:
                 return ll
-    
-    
+
+
         difference = np.inf
         iteration = 0
         while difference > _mode_finding_tolerance and iteration < _mode_finding_max_iter:
@@ -397,23 +401,23 @@ class ISMOE(object):
             grad = self.mb_weight*bernoulli_dlogpdf_dlink(f, Y)
             if np.any(np.isnan(grad)):
                 raise ValueError('One or more element(s) of grad is NaN')
-    
+
             W_f = W*f
-    
+
             b = W_f + grad # R+W p46 line 6.
             W12BiW12, _, _, _ = _compute_B_statistics(K, W)
             W12BiW12Kb = np.dot(W12BiW12, np.dot(K, b))
-    
+
             #Work out the DIRECTION that we want to move in, but don't choose the stepsize yet
             full_step_Ki_f = b - W12BiW12Kb # full_step_Ki_f = a in R&W p46 line 6.
             dKi_f = full_step_Ki_f - Ki_f
-    
+
             #define an objective for the line search (minimize this one)
             def inner_obj(step_size):
                 Ki_f_trial = Ki_f + step_size*dKi_f
                 f_trial = np.dot(K, Ki_f_trial)
                 return -obj(Ki_f_trial, f_trial)
-    
+
             #use scipy for the line search, the compute new values of f, Ki_f
             step = brent(inner_obj, tol=1e-4, maxiter=12)
             Ki_f_new = Ki_f + step*dKi_f
@@ -430,11 +434,11 @@ class ISMOE(object):
             iteration += 1
     #    log_marginal, woodbury_inv, dL_dK, dL_dthetaL = self.mode_computations(f_hat, Ki_fhat, K, Y, likelihood, kern, Y_metadata)
         return f, Ki_f
-    
+
     def mode_computations(self, f_hat, Ki_f, K, Y):
         """
         At the mode, compute the hessian and effective covariance matrix.
-    
+
         returns: logZ : approximation to the marginal likelihood
                  woodbury_inv : variable required for calculating the approximation to the covariance matrix
                  dL_dthetaL : array of derivatives (1 x num_kernel_params)
@@ -444,12 +448,12 @@ class ISMOE(object):
         W = -self.mb_weight*bernoulli_d2logpdf_dlink2(f_hat, Y)
         if np.any(np.isnan(W)):
             raise ValueError('One or more element(s) of W is NaN')
-    
+
         _, logdet_I_KW, _, _ = _compute_B_statistics(K, W)
-    
+
         #compute the log marginal
         log_marginal = -0.5*np.sum(np.dot(Ki_f.T, f_hat)) + self.mb_weight* np.sum(bernoulli_logpdf(f_hat, Y)) - 0.5*logdet_I_KW
-    
+
         return log_marginal
 
 #    def proposal_weight_calc(self,args):
@@ -480,11 +484,14 @@ class ISMOE(object):
             K_mask = (self.Z_proposal[j]==k)
             Y_k = np.copy(self.Y[self.U[j]][K_mask]).reshape(-1,1)
             X_k = np.copy(self.X[self.U[j]][K_mask])
-            if idx is 0:
-                gp_model_k = GPy.core.GP(X_k,Y_k, kernel =  GPy.kern.RBF(self.D, lengthscale=hyp[0],variance=hyp[1]) ,likelihood=GPy.likelihoods.Bernoulli(),inference_method=GPy.inference.latent_function_inference.laplace.Laplace())
-            else:
-                gp_model_k.set_XY(X=X_k,Y=Y_k)
-            LL += gp_model_k.objective_function()
+            try:
+                if idx is 0:
+                    gp_model_k = GPy.core.GP(X_k,Y_k, kernel =  GPy.kern.RBF(self.D, lengthscale=hyp[0],variance=hyp[1]) ,likelihood=GPy.likelihoods.Bernoulli(),inference_method=GPy.inference.latent_function_inference.laplace.Laplace())
+                else:
+                    gp_model_k.set_XY(X=X_k,Y=Y_k)
+                LL += gp_model_k.objective_function()
+            except:
+                return(np.inf)
         return(LL)
 
 
@@ -617,20 +624,3 @@ if __name__ == '__main__':
                         partition="gmm", stationary=True, mb_upweight=True,
                         full_cov=False)
             igps.prediction_combine()
-
-    J= 128
-    dat = loadmat("../data/skin.mat")
-    X_full = dat['X']
-    Y_full = dat['Y'].flatten()
-    print("ISMOE Classification")
-    for K in K_range:
-        kf=KFold(n_splits=5, random_state=0,shuffle=True)
-        for train,test in kf.split(X_full,Y_full):
-            X,Y = X_full[train], Y_full[train]
-            X_star,Y_star = X_full[test], Y_full[test]
-            igps = ISMOE(X = X, Y=Y, X_star= X_star, Y_star = Y_star,K=K, J=J,
-                                IS=True,classification=True,N_minibatch = N,
-                                partition="gmm", stationary=True, mb_upweight=True,
-                                full_cov=False)
-            igps.prediction_combine()
-        
